@@ -1,73 +1,67 @@
 import streamlit as st
 import joblib
 import numpy as np
-import re, string
 
-# ---------------------------
-# Load trained model & vectorizer
-# ---------------------------
+# --- Load saved model and vectorizer ---
 model = joblib.load("sentiment_model.pkl")
 vectorizer = joblib.load("vectorizer.pkl")
-le = joblib.load("label_encoder.pkl")
 
-# ---------------------------
-# Text Cleaning Function
-# ---------------------------
-def clean_text(text):
-    text = re.sub(r"http\S+|www\S+|https\S+", '', text)
-    text = re.sub(r'\@\w+|\#','', text)
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    text = text.lower()
-    return text
-
-# ---------------------------
-# Streamlit UI
-# ---------------------------
+# --- Streamlit setup ---
 st.set_page_config(page_title="Twitter Sentiment Analyzer", page_icon="💬", layout="centered")
-
 st.title("💬 Twitter Sentiment Analyzer")
-st.write("Enter a tweet below and instantly get its **sentiment prediction** using a trained MLP model!")
+st.write("Classify any tweet as **Positive**, **Neutral**, **Negative**, or **Irrelevant** using a trained ML model.")
 
-tweet = st.text_area("✏️ Enter your tweet:", "")
+# --- Label mapping based on your dataset ---
+label_map = {
+    3: "Positive",
+    2: "Neutral",
+    1: "Negative",
+    0: "Irrelevant"
+}
 
-if st.button("🔍 Analyze Sentiment"):
-    if tweet.strip() == "":
-        st.warning("⚠️ Please enter a tweet first.")
+# --- Text input ---
+user_input = st.text_area("✍️ Enter a tweet:", height=120)
+
+# --- Analyze sentiment button ---
+if st.button("Analyze Sentiment"):
+    if user_input.strip():
+        # Preprocess input
+        clean_text = [user_input.lower()]
+        X_input = vectorizer.transform(clean_text)
+
+        # Get probabilities
+        proba = model.predict_proba(X_input)[0]
+        maxp = float(np.max(proba))
+        pred_encoded = int(np.argmax(proba))
+
+        # --- Confidence-based correction ---
+        if maxp < 0.45:
+            pred_label = "Irrelevant"
+        elif maxp < 0.60 and pred_encoded == 3:
+            pred_label = "Neutral"
+        else:
+            pred_label = label_map.get(pred_encoded, f"Unknown ({pred_encoded})")
+
+        # --- Display result ---
+        if pred_label == "Positive":
+            st.success(f"### 😊 Sentiment: **{pred_label}** (confidence: {maxp:.2f})")
+        elif pred_label == "Negative":
+            st.error(f"### 😠 Sentiment: **{pred_label}** (confidence: {maxp:.2f})")
+        elif pred_label == "Neutral":
+            st.info(f"### 😐 Sentiment: **{pred_label}** (confidence: {maxp:.2f})")
+        elif pred_label == "Irrelevant":
+            st.warning(f"### 🤔 Sentiment: **{pred_label}** (confidence: {maxp:.2f})")
+        else:
+            st.write(f"Sentiment: {pred_label} (confidence: {maxp:.2f})")
+
+        # --- Optional: show all probabilities ---
+        st.write("#### Class probabilities:")
+        for k, v in sorted(label_map.items(), key=lambda x: x[0]):
+            st.write(f"**{v}**: {proba[k]:.3f}")
+
     else:
-        # Clean and vectorize
-        clean_tweet = clean_text(tweet)
-        vectorized_tweet = vectorizer.transform([clean_tweet])
+        st.warning("⚠️ Please enter some text before analyzing.")
 
-        # Predict sentiment
-        prediction = model.predict(vectorized_tweet)
-        proba = model.predict_proba(vectorized_tweet)
-
-        # Decode label if numeric
-        if isinstance(prediction[0], (int, float, np.integer)):
-            sentiment = le.inverse_transform(prediction)[0]
-        else:
-            sentiment = prediction[0]
-
-        sentiment = str(sentiment).lower()
-
-        # ---------------------------
-        # Display Results
-        # ---------------------------
-        st.subheader("🧠 Predicted Sentiment:")
-
-        if "pos" in sentiment:
-            st.success(f"😀 Positive")
-            st.progress(float(np.max(proba)))
-        elif "neg" in sentiment:
-            st.error(f"😠 Negative")
-            st.progress(float(np.max(proba)))
-        else:
-            st.info(f"😐 Neutral")
-            st.progress(float(np.max(proba)))
-
-        # Show confidence
-        st.caption(f"Model confidence: **{np.max(proba)*100:.2f}%**")
-
-# Footer
+# --- Footer ---
 st.markdown("---")
-st.markdown("Built with ❤️ using Streamlit and scikit-learn")
+st.markdown("Made with ❤️ using **Streamlit**, **Scikit-learn**, and **Python**.")
